@@ -1,0 +1,217 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-01-15",
+  "scoring": {
+    "maxScore": 20,
+    "dimensions": [
+      {
+        "id": "value",
+        "name": "实际价值",
+        "icon": "📈",
+        "weight": 0.30,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "real_landing",
+            "name": "真实落地",
+            "description": "文档内容是否已在实际业务/项目中应用",
+            "checkKeywords": ["上线", "部署", "已应用", "已使用"]
+          },
+          {
+            "id": "quantified_benefit",
+            "name": "量化收益",
+            "description": "是否有明确的数据化收益（效率/成本/周期）",
+            "checkPatterns": ["效率提升", "成本降低", "周期缩短", "XX%", "XX元"]
+          },
+          {
+            "id": "pain_point",
+            "name": "解决痛点",
+            "description": "是否明确指出并解决了具体的业务/工程痛点",
+            "checkKeywords": ["痛点", "问题", "挑战", "难点"]
+          },
+          {
+            "id": "evidence",
+            "name": "落地佐证",
+            "description": "是否有可核查的证据材料",
+            "checkKeywords": ["代码", "截图", "监控", "任务单", "链接"]
+          }
+        ]
+      },
+      {
+        "id": "reusability",
+        "name": "可复用性",
+        "icon": "♻️",
+        "weight": 0.25,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "standardization",
+            "name": "标准化程度",
+            "description": "是否形成SOP/流程/模板/Checklist",
+            "checkKeywords": ["SOP", "流程", "模板", "Checklist", "步骤"]
+          },
+          {
+            "id": "cross_scenario",
+            "name": "跨场景适用",
+            "description": "是否支持跨团队/跨场景复用",
+            "checkKeywords": ["跨团队", "跨场景", "通用", "适用"]
+          },
+          {
+            "id": "low_dependency",
+            "name": "低依赖性",
+            "description": "新人能否直接上手，不依赖原作者",
+            "checkKeywords": ["新人", "上手", "独立", "无需"]
+          }
+        ]
+      },
+      {
+        "id": "innovation",
+        "name": "创新性",
+        "icon": "💡",
+        "weight": 0.25,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "new_idea",
+            "name": "新思路/算法",
+            "description": "是否有创新的解决方案或算法改进",
+            "checkKeywords": ["创新", "新方法", "改进", "优化"]
+          },
+          {
+            "id": "ai_coding",
+            "name": "AI Coding新法",
+            "description": "是否有新颖的AI辅助编程方法",
+            "checkKeywords": ["AI", "Prompt", "Agent", "Skill", "大模型"]
+          },
+          {
+            "id": "new_architecture",
+            "name": "新架构设计",
+            "description": "是否提出新的Skill/Agent/系统架构",
+            "checkKeywords": ["架构", "设计", "框架", "系统"]
+          }
+        ]
+      },
+      {
+        "id": "method",
+        "name": "方法沉淀",
+        "icon": "📝",
+        "weight": 0.20,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "replicability",
+            "name": "可复制性",
+            "description": "流程/Prompt/步骤是否清晰，能否照做",
+            "checkKeywords": ["示例", "代码", "Prompt", "步骤", "输入输出"]
+          },
+          {
+            "id": "completeness",
+            "name": "完整性",
+            "description": "逻辑是否闭环，步骤是否齐全",
+            "checkKeywords": ["完整", "闭环", "齐全", "覆盖"]
+          }
+        ]
+      }
+    ],
+    "levels": [
+      {
+        "name": "卓越",
+        "icon": "🌟",
+        "minScore": 18,
+        "maxScore": 20,
+        "description": "标杆文档，强烈推荐",
+        "color": "#FFD700"
+      },
+      {
+        "name": "优秀",
+        "icon": "✅",
+        "minScore": 15,
+        "maxScore": 17,
+        "description": "高质量文档，推荐",
+        "color": "#4CAF50"
+      },
+      {
+        "name": "良好",
+        "icon": "🆗",
+        "minScore": 12,
+        "maxScore": 14,
+        "description": "合格文档，可优化",
+        "color": "#2196F3"
+      },
+      {
+        "name": "一般",
+        "icon": "⚠️",
+        "minScore": 8,
+        "maxScore": 11,
+        "description": "需要改进",
+        "color": "#FF9800"
+      },
+      {
+        "name": "较差",
+        "icon": "❌",
+        "minScore": 4,
+        "maxScore": 7,
+        "description": "建议重写",
+        "color": "#f44336"
+      }
+    ]
+  },
+  "report": {
+    "sections": [
+      "basic_info",
+      "score_overview",
+      "dimension_analysis",
+      "overall_evaluation",
+      "score_summary"
+    ],
+    "requiredFields": [
+      "docTitle",
+      "docLink",
+      "evalTime",
+      "docType",
+      "totalScore",
+      "dimensions",
+      "summary"
+    ]
+  },
+  "mcp": {
+    "feishu": {
+      "apiEndpoint": "/api/feishu/docx/rawContent",
+      "documentIdPattern": "[a-zA-Z0-9]{20,}"
+    },
+    "ai": {
+      "apiEndpoint": "/api/ai/analyze",
+      "model": "gpt-4",
+      "temperature": 0.3,
+      "maxTokens": 4000
+    }
+  },
+  "ui": {
+    "theme": {
+      "primaryColor": "#667eea",
+      "secondaryColor": "#764ba2",
+      "successColor": "#4CAF50",
+      "warningColor": "#FF9800",
+      "errorColor": "#f44336"
+    },
+    "radarChart": {
+      "enabled": true,
+      "maxValue": 5,
+      "labels": ["实际价值", "可复用性", "创新性", "方法沉淀"]
+    }
+  },
+  "prompts": {
+    "system": "你是一个专业的文档质量评估专家。请根据以下评分维度和标准，对提供的飞书文档进行详细分析并打分。",
+    "userTemplate": "请对以下文档进行评分：\n\n文档标题：{{docTitle}}\n文档内容：{{docContent}}\n\n请按照评分标准进行评估，并返回JSON格式的评分结果。",
+    "responseFormat": {
+      "totalScore": "number",
+      "summary": "string",
+      "dimensions": {
+        "value": { "score": "number", "details": "array" },
+        "reusability": { "score": "number", "details": "array" },
+        "innovation": { "score": "number", "details": "array" },
+        "method": { "score": "number", "details": "array" }
+      }
+    }
+  }
+}

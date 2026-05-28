@@ -1,0 +1,151 @@
+{
+  "version": "1.0.0",
+  "scoring": {
+    "maxScore": 20,
+    "dimensions": [
+      {
+        "id": "value",
+        "name": "实际价值",
+        "icon": "📈",
+        "weight": 0.30,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "real_landing",
+            "name": "真实落地",
+            "description": "文档内容是否已在实际业务/项目中应用",
+            "checkKeywords": ["上线", "部署", "已应用", "已使用"]
+          },
+          {
+            "id": "quantified_benefit",
+            "name": "量化收益",
+            "description": "是否有明确的数据化收益（效率/成本/周期）",
+            "checkPatterns": ["效率提升", "成本降低", "周期缩短", "%", "元"]
+          },
+          {
+            "id": "pain_point",
+            "name": "解决痛点",
+            "description": "是否明确指出并解决了具体的业务/工程痛点",
+            "checkKeywords": ["痛点", "问题", "挑战", "难点"]
+          },
+          {
+            "id": "evidence",
+            "name": "落地佐证",
+            "description": "是否有可核查的证据材料",
+            "checkKeywords": ["代码", "截图", "监控", "任务单", "链接"]
+          }
+        ],
+        "scoringGuide": {
+          "5": "4项子项全部满足；有具体数据支撑；佐证材料完整可验证",
+          "4": "满足3项子项；有部分数据；有佐证但不够完整",
+          "3": "满足2项子项；有落地但缺少量化；佐证材料较少",
+          "2": "仅满足1项子项；多为理论描述；缺少实际证据",
+          "1": "4项子项均不满足；纯理论/规划；无任何落地迹象"
+        }
+      },
+      {
+        "id": "reusability",
+        "name": "可复用性",
+        "icon": "♻️",
+        "weight": 0.25,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "standardization",
+            "name": "标准化程度",
+            "description": "是否形成SOP/流程/模板/Checklist",
+            "checkKeywords": ["SOP", "流程", "模板", "Checklist", "步骤"]
+          },
+          {
+            "id": "cross_scenario",
+            "name": "跨场景适用",
+            "description": "是否支持跨团队/跨场景复用",
+            "checkKeywords": ["跨团队", "跨场景", "通用", "适用"]
+          },
+          {
+            "id": "low_dependency",
+            "name": "低依赖性",
+            "description": "新人能否直接上手，不依赖原作者",
+            "checkKeywords": ["新人", "上手", "独立", "无需"]
+          }
+        ],
+        "scoringGuide": {
+          "5": "有完整SOP/模板；可直接套用到其他场景；新人可独立完成",
+          "4": "有较清晰流程；需少量修改即可复用；有足够上下文说明",
+          "3": "有基本步骤；需要一定调整才能复用；部分需原作者补充",
+          "2": "步骤零散；强依赖特定场景；新人需频繁请教",
+          "1": "纯个人笔记；无法脱离原作者理解；不可复用"
+        }
+      },
+      {
+        "id": "innovation",
+        "name": "创新性",
+        "icon": "💡",
+        "weight": 0.25,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "new_idea",
+            "name": "新思路/算法",
+            "description": "是否有创新的解决方案或算法改进",
+            "checkKeywords": ["创新", "新方法", "改进", "优化"]
+          },
+          {
+            "id": "ai_coding",
+            "name": "AI Coding新法",
+            "description": "是否有新颖的AI辅助编程方法",
+            "checkKeywords": ["AI", "Prompt", "Agent", "Skill", "大模型"]
+          },
+          {
+            "id": "new_architecture",
+            "name": "新架构设计",
+            "description": "是否提出新的Skill/Agent/系统架构",
+            "checkKeywords": ["架构", "设计", "框架", "系统"]
+          }
+        ],
+        "scoringGuide": {
+          "5": "开创性方法；对团队有重大启发；可引发技术方向变革",
+          "4": "显著创新；解决已有方案的痛点；具有较高推广价值",
+          "3": "有一定创新点；在现有基础上改进；有参考价值",
+          "2": "创新较少；组合现有方法；略有优化",
+          "1": "无创新；常规方法应用；无额外价值"
+        }
+      },
+      {
+        "id": "method",
+        "name": "方法沉淀",
+        "icon": "📝",
+        "weight": 0.20,
+        "maxScore": 5,
+        "subItems": [
+          {
+            "id": "replicability",
+            "name": "可复制性",
+            "description": "流程/Prompt/步骤是否清晰，能否照做",
+            "checkKeywords": ["示例", "代码", "Prompt", "步骤", "输入输出"]
+          },
+          {
+            "id": "completeness",
+            "name": "完整性",
+            "description": "逻辑是否闭环，步骤是否齐全",
+            "checkKeywords": ["完整", "闭环", "齐全", "覆盖"]
+          }
+        ],
+        "scoringGuide": {
+          "5": "完美可复制；逻辑闭环；覆盖全生命周期；可作为标准参考",
+          "4": "高度可复制；步骤完整；仅少量细节需补充",
+          "3": "基本可复制；有部分缺失；需一定经验补充",
+          "2": "难以直接复制；步骤不完整；需大量补充",
+          "1": "无法复制；仅为零散想法；逻辑不完整"
+        }
+      }
+    ],
+    "levels": [
+      { "name": "卓越", "icon": "🌟", "minScore": 18, "maxScore": 20, "description": "标杆文档，强烈推荐", "color": "#FFD700" },
+      { "name": "优秀", "icon": "✅", "minScore": 15, "maxScore": 17, "description": "高质量文档，推荐", "color": "#4CAF50" },
+      { "name": "良好", "icon": "🆗", "minScore": 12, "maxScore": 14, "description": "合格文档，可优化", "color": "#2196F3" },
+      { "name": "一般", "icon": "⚠️", "minScore": 8,  "maxScore": 11, "description": "需要改进", "color": "#FF9800" },
+      { "name": "较差", "icon": "❌", "minScore": 4,  "maxScore": 7,  "description": "建议重写", "color": "#f44336" }
+    ]
+  }
+}

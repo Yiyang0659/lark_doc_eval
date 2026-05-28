@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>飞书文档 AI 智能评分</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Ambient glow effects -->
+  <div class="glow glow-top-left"></div>
+  <div class="glow glow-top-right"></div>
+
+  <div class="container">
+
+    <!-- ── Header ── -->
+    <header class="site-header">
+      <div class="header-pill">AI 评分系统</div>
+      <h1>飞书文档 <span class="grad-text">智能评分</span></h1>
+      <p class="header-sub">基于 AI + 结构化四维度，对飞书文档进行自动评估与深度洞察</p>
+    </header>
+
+    <!-- ── Input Card ── -->
+    <section class="card input-card">
+      <div class="input-layout">
+        <div class="input-fields">
+          <div class="form-group">
+            <label for="docUrl">飞书文档链接</label>
+            <div class="input-row">
+              <span class="input-prefix">🔗</span>
+              <input type="text" id="docUrl"
+                placeholder="粘贴飞书文档链接，如 https://xxx.feishu.cn/docx/...">
+            </div>
+          </div>
+          <div class="form-group form-group-sm">
+            <label for="provider">AI 模型</label>
+            <div class="select-wrap">
+              <select id="provider">
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="openai">OpenAI (GPT)</option>
+              </select>
+              <span class="select-caret">▾</span>
+            </div>
+          </div>
+        </div>
+        <button id="evaluateBtn" class="btn-evaluate">
+          <span class="btn-text"><span class="btn-spark">✦</span> 开始评分</span>
+          <span class="btn-loading" style="display:none">
+            <span class="spinner"></span> AI 分析中…
+          </span>
+        </button>
+      </div>
+      <div id="errorMsg" class="error-msg" style="display:none"></div>
+    </section>
+
+    <!-- ── Result Section ── -->
+    <section id="resultSection" class="result-section" style="display:none">
+
+      <!-- Hero Row -->
+      <div class="hero-row">
+
+        <!-- Score card -->
+        <div class="card score-card">
+          <div class="score-card-top">
+            <div class="score-card-meta">
+              <p class="dim-label">当前分析文档</p>
+              <h2 class="doc-url-text" id="docTitle">—</h2>
+            </div>
+            <div class="score-number-block">
+              <p class="dim-label">综合评分</p>
+              <div class="score-num">
+                <span id="totalScore">-</span><span class="score-denom">/20</span>
+              </div>
+              <div class="level-badge" id="levelBadge"></div>
+            </div>
+          </div>
+          <div class="score-bars" id="scoreBars"></div>
+        </div>
+
+        <!-- AI analysis card -->
+        <div class="card ai-card">
+          <div class="ai-card-head">
+            <span class="ai-card-title">AI 分析结果</span>
+            <span class="pulse-dot"></span>
+          </div>
+          <p class="ai-summary" id="summaryText"></p>
+          <div class="ai-bubbles" id="aiBubbles"></div>
+        </div>
+      </div>
+
+      <!-- Dimension section header -->
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">评分维度</h2>
+          <p class="section-sub">AI 基于以下四个维度自动分析文档内容</p>
+        </div>
+        <button class="btn-ghost" id="toggleChart">📊 雷达图</button>
+      </div>
+
+      <!-- Radar (hidden by default) -->
+      <div id="radarWrap" class="radar-wrap" style="display:none">
+        <canvas id="radarChart"></canvas>
+      </div>
+
+      <!-- Dimension Cards -->
+      <div class="dim-grid" id="dimensionsGrid"></div>
+
+      <!-- Highlights -->
+      <div class="card eval-card" id="highlightsCard" style="display:none">
+        <div class="eval-card-head">
+          <span class="eval-tag tag-green">✦ 核心优势</span>
+        </div>
+        <ul class="highlights-list" id="highlightsList"></ul>
+      </div>
+
+      <!-- Improvements -->
+      <div class="card eval-card">
+        <div class="eval-card-head">
+          <span class="eval-tag tag-amber">⚠ 改进建议</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>改进建议</th><th>维度</th><th>详情说明</th></tr>
+            </thead>
+            <tbody id="improvementsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recommendation -->
+      <div id="recommendSection" class="card eval-card"></div>
+
+      <!-- Export Actions -->
+      <div class="actions-row">
+        <button id="exportMarkdown" class="btn-action">📄 导出 Markdown</button>
+        <button id="exportHTML" class="btn-action">🌐 导出 HTML 报告</button>
+      </div>
+
+    </section>
+
+    <!-- ── History ── -->
+    <section class="card history-card">
+      <div class="history-head">
+        <h2 class="section-title">评分历史</h2>
+        <span class="history-badge" id="historyCount">0 条</span>
+      </div>
+      <div id="historyList" class="history-list">
+        <div class="empty-state">暂无评分记录</div>
+      </div>
+    </section>
+
+    <!-- ── Architecture ── -->
+    <section class="arch-section">
+      <h2 class="section-title" style="margin-bottom:20px">系统实现架构</h2>
+      <div class="arch-flow">
+        <div class="arch-step"><span class="arch-num">01</span><span class="arch-icon">📄</span><span class="arch-name">飞书文档</span></div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-step"><span class="arch-num">02</span><span class="arch-icon">🔍</span><span class="arch-name">内容解析</span></div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-step"><span class="arch-num">03</span><span class="arch-icon">🤖</span><span class="arch-name">LLM 分析</span></div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-step"><span class="arch-num">04</span><span class="arch-icon">⚡</span><span class="arch-name">评分引擎</span></div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-step"><span class="arch-num">05</span><span class="arch-icon">📊</span><span class="arch-name">可视化结果</span></div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
