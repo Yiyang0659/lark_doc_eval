@@ -6,6 +6,7 @@
   <title>飞书文档 AI 智能评分</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 </head>
 <body>
 
@@ -20,6 +21,53 @@
       <div class="header-pill">AI 评分系统</div>
       <h1>飞书文档 <span class="grad-text">智能评分</span></h1>
       <p class="header-sub">基于 AI + 结构化四维度，对飞书文档进行自动评估与深度洞察</p>
+      <div id="authBar" class="auth-bar">
+        <button id="loginBtn" class="btn-login" onclick="handleFeishuLogin()">
+          <span class="login-icon">🔑</span> 飞书授权登录
+        </button>
+        <span id="loginStatus" class="login-status" style="display:none">
+          ✅ 已登录
+          <button id="logoutBtn" class="btn-logout" onclick="handleFeishuLogout()">切换账号</button>
+        </span>
+      </div>
+      <div id="appConfigPanel" class="app-config-panel">
+        <button id="appConfigToggle" class="btn-config-toggle" onclick="toggleAppConfig()">
+          ⚙️ 自定义飞书应用配置
+          <span class="config-toggle-arrow" id="configArrow">▼</span>
+        </button>
+        <div id="appConfigBody" class="app-config-body" style="display:none">
+          <div class="config-instructions">
+            <p>如果默认飞书应用无权限，请配置您自己的飞书应用：</p>
+            <ol>
+              <li>在 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建或选择一个应用</li>
+              <li>确保应用已开通以下权限：<code>wiki:node:read</code>、<code>docx:document:readonly</code>、<code>drive:drive:readonly</code></li>
+              <li>在应用的「安全设置」中，添加重定向 URL：<code>http://localhost:3000/auth/feishu/callback</code></li>
+              <li>将应用的 App ID 和 App Secret 填入下方</li>
+            </ol>
+          </div>
+          <div class="config-fields">
+            <div class="form-group">
+              <label for="customAppId">App ID</label>
+              <div class="input-row">
+                <span class="input-prefix">🔑</span>
+                <input type="text" id="customAppId" placeholder="cli_xxxxxxxxxxxxxxxx">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="customAppSecret">App Secret</label>
+              <div class="input-row">
+                <span class="input-prefix">🔒</span>
+                <input type="password" id="customAppSecret" placeholder="输入 App Secret">
+              </div>
+            </div>
+            <div class="config-actions">
+              <button class="btn-config-save" onclick="saveAppConfig()">保存配置</button>
+              <button class="btn-config-clear" onclick="clearAppConfig()">恢复默认</button>
+              <span id="configStatus" class="config-status"></span>
+            </div>
+          </div>
+        </div>
+      </div>
     </header>
 
     <!-- ── Input Card ── -->
@@ -34,16 +82,6 @@
                 placeholder="粘贴飞书文档链接，如 https://xxx.feishu.cn/docx/...">
             </div>
           </div>
-          <div class="form-group form-group-sm">
-            <label for="provider">AI 模型</label>
-            <div class="select-wrap">
-              <select id="provider">
-                <option value="claude">Claude (Anthropic)</option>
-                <option value="openai">OpenAI (GPT)</option>
-              </select>
-              <span class="select-caret">▾</span>
-            </div>
-          </div>
         </div>
         <button id="evaluateBtn" class="btn-evaluate">
           <span class="btn-text"><span class="btn-spark">✦</span> 开始评分</span>
@@ -53,6 +91,22 @@
         </button>
       </div>
       <div id="errorMsg" class="error-msg" style="display:none"></div>
+    </section>
+
+    <!-- ── Scoring Dimensions (initial page only) ── -->
+    <section id="dimsOverview" class="dims-overview-section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">评分维度</h2>
+          <p class="section-sub">AI 基于以下四个维度自动分析文档内容</p>
+        </div>
+        <button class="btn-ghost" id="overviewToggleChart">📊 雷达图</button>
+      </div>
+      <div id="overviewRadarWrap" class="radar-wrap" style="display:none">
+        <canvas id="overviewRadarChart"></canvas>
+      </div>
+      <div class="dim-grid" id="overviewDimensionsGrid"></div>
+      <div id="scoringCriteriaBrief" class="scoring-criteria-brief"></div>
     </section>
 
     <!-- ── Result Section ── -->
@@ -65,18 +119,30 @@
         <div class="card score-card">
           <div class="score-card-top">
             <div class="score-card-meta">
-              <p class="dim-label">当前分析文档</p>
-              <h2 class="doc-url-text" id="docTitle">—</h2>
+              <p class="dim-label label-title">读取文档链接的题目</p>
+              <h2 class="doc-title-text" id="docTitle">—</h2>
             </div>
             <div class="score-number-block">
-              <p class="dim-label">综合评分</p>
+              <p class="dim-label label-score">综合评分</p>
               <div class="score-num">
                 <span id="totalScore">-</span><span class="score-denom">/20</span>
               </div>
               <div class="level-badge" id="levelBadge"></div>
             </div>
           </div>
-          <div class="score-bars" id="scoreBars"></div>
+
+          <!-- 文档总结区域 -->
+          <div class="doc-summary-block" id="docSummaryBlock" style="display:none">
+            <p class="doc-summary-intro" id="docOneLine"></p>
+            <div class="doc-summary-details" id="docSummaryDetails"></div>
+          </div>
+
+          <div class="score-card-body">
+            <div class="score-radar-inline">
+              <canvas id="scoreRadarChart"></canvas>
+            </div>
+            <div class="score-bars" id="scoreBars"></div>
+          </div>
         </div>
 
         <!-- AI analysis card -->
@@ -139,17 +205,6 @@
         <button id="exportHTML" class="btn-action">🌐 导出 HTML 报告</button>
       </div>
 
-    </section>
-
-    <!-- ── History ── -->
-    <section class="card history-card">
-      <div class="history-head">
-        <h2 class="section-title">评分历史</h2>
-        <span class="history-badge" id="historyCount">0 条</span>
-      </div>
-      <div id="historyList" class="history-list">
-        <div class="empty-state">暂无评分记录</div>
-      </div>
     </section>
 
     <!-- ── Architecture ── -->

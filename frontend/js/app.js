@@ -1,6 +1,7 @@
 const API_BASE = '/api';
 let currentResult = null;
 let radarChart = null;
+let scoreRadarChart = null;
 
 const DIM_CONFIG = [
   {
@@ -47,13 +48,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('exportMarkdown').addEventListener('click', () => handleExport('markdown'));
   document.getElementById('exportHTML').addEventListener('click', () => handleExport('html'));
   document.getElementById('toggleChart').addEventListener('click', toggleRadar);
-  loadHistory();
+  document.getElementById('overviewToggleChart').addEventListener('click', toggleOverviewRadar);
+  renderOverviewRadar();
+  renderOverviewDimensions();
+  loadScoringCriteriaBrief();
+  checkLoginStatus();
+
+  // 监听 OAuth 登录成功消息
+  window.addEventListener('message', (e) => {
+    if (e.data === 'feishu-login-success') checkLoginStatus();
+  });
 });
 
 // ── Evaluate ──
 async function handleEvaluate() {
   const docUrl = document.getElementById('docUrl').value.trim();
-  const provider = document.getElementById('provider').value;
   const errorEl = document.getElementById('errorMsg');
   errorEl.style.display = 'none';
 
@@ -61,21 +70,49 @@ async function handleEvaluate() {
 
   setLoading(true);
   try {
+    // 第一步：提交评估任务，立即返回任务 ID
     const res = await fetch(`${API_BASE}/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docUrl, provider })
+      body: JSON.stringify({ docUrl, provider: 'claude' })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || '评分失败');
-    currentResult = data;
-    displayResult(data);
-    loadHistory();
+    if (!res.ok) throw new Error(data.error || '提交失败');
+
+    const jobId = data.id;
+    console.log('[evaluate] 任务已提交, id:', jobId);
+
+    // 第二步：轮询结果
+    const result = await pollResult(jobId);
+    currentResult = result;
+    displayResult(result);
   } catch (err) {
+    console.error('[evaluate] 异常:', err);
     showError(`评分失败：${err.message}`);
   } finally {
     setLoading(false);
   }
+}
+
+async function pollResult(id) {
+  const maxAttempts = 180; // 最多 3 分钟（每秒 1 次）
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const res = await fetch(`${API_BASE}/result/${id}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.total_score !== undefined) return data;
+    }
+    // 更新加载提示
+    const btn = document.getElementById('evaluateBtn');
+    const loadingEl = btn.querySelector('.btn-loading');
+    if (loadingEl) {
+      const sec = i + 1;
+      loadingEl.innerHTML = `<span class="spinner"></span> AI 分析中… ${sec}s`;
+    }
+  }
+  throw new Error('评估超时，请稍后重试');
 }
 
 function setLoading(on) {
@@ -96,9 +133,36 @@ function displayResult(result) {
   const section = document.getElementById('resultSection');
   section.style.display = 'block';
 
-  // Doc title (show domain + first path segment)
+  // Hide initial page overview
+  const overview = document.getElementById('dimsOverview');
+  if (overview) overview.style.display = 'none';
+
+  // Doc title: use fetched title, fall back to short URL
   const urlShort = result.docUrl.replace(/^https?:\/\//, '').split('/').slice(0, 3).join('/');
-  document.getElementById('docTitle').textContent = urlShort;
+  document.getElementById('docTitle').textContent = result.docTitle || urlShort;
+
+  // Document summary block
+  const summaryBlock = document.getElementById('docSummaryBlock');
+  const s = result.docSummary;
+  if (s) {
+    document.getElementById('docOneLine').textContent = s.one_line_intro || '';
+
+    const detailsEl = document.getElementById('docSummaryDetails');
+    const rows = [];
+    if (s.background_and_pain_points?.length) {
+      rows.push(`<div class="summary-row"><span class="summary-tag">背景痛点</span><span class="summary-val">${s.background_and_pain_points.slice(0,2).join('；')}</span></div>`);
+    }
+    if (s.core_solutions?.length) {
+      rows.push(`<div class="summary-row"><span class="summary-tag">核心方案</span><span class="summary-val">${s.core_solutions.slice(0,2).join('；')}</span></div>`);
+    }
+    if (s.target_audience_and_scenario) {
+      rows.push(`<div class="summary-row"><span class="summary-tag">适用人群</span><span class="summary-val">${s.target_audience_and_scenario}</span></div>`);
+    }
+    detailsEl.innerHTML = rows.join('');
+    summaryBlock.style.display = '';
+  } else {
+    summaryBlock.style.display = 'none';
+  }
 
   // Total score
   document.getElementById('totalScore').textContent = result.total_score;
@@ -114,6 +178,9 @@ function displayResult(result) {
 
   // Score progress bars
   renderScoreBars(result.dimensions);
+
+  // Inline radar chart in score card
+  renderScoreRadarChart(result.dimensions);
 
   // AI bubbles (highlights in AI card)
   renderAIBubbles(result.highlights || []);
@@ -134,6 +201,90 @@ function displayResult(result) {
   renderRecommendation(result.recommendation);
 
   section.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── Inline radar chart in score card (rich multi-color) ──
+function renderScoreRadarChart(dimensions) {
+  const canvas = document.getElementById('scoreRadarChart');
+  if (!canvas) return;
+
+  if (scoreRadarChart) { scoreRadarChart.destroy(); scoreRadarChart = null; }
+
+  const ctx = canvas.getContext('2d');
+  const scores = DIM_CONFIG.map(d => dimensions[d.id]?.score || 0);
+  const colors = DIM_CONFIG.map(d => d.color);
+
+  scoreRadarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: DIM_CONFIG.map(d => d.name),
+      datasets: [
+        {
+          data: [5, 5, 5, 5],
+          backgroundColor: 'rgba(255,255,255,0.025)',
+          borderColor: 'rgba(255,255,255,0.07)',
+          borderWidth: 1,
+          pointRadius: 0,
+          order: 3
+        },
+        {
+          data: [2.5, 2.5, 2.5, 2.5],
+          backgroundColor: 'rgba(255,255,255,0.015)',
+          borderColor: 'rgba(255,255,255,0.04)',
+          borderWidth: 1,
+          pointRadius: 0,
+          order: 2
+        },
+        {
+          label: '评分',
+          data: scores,
+          backgroundColor: 'rgba(129,140,248,0.18)',
+          borderColor: colors,
+          borderWidth: 2.5,
+          pointBackgroundColor: colors,
+          pointBorderColor: '#18181b',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+          fill: true,
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        r: {
+          beginAtZero: true,
+          min: 0,
+          max: 5,
+          ticks: { display: false, backdropColor: 'transparent' },
+          pointLabels: {
+            font: { size: 10, weight: '700' },
+            color: (ctx) => DIM_CONFIG[ctx.index]?.color || '#a1a1aa'
+          },
+          grid: { color: 'rgba(255,255,255,0.07)', lineWidth: 1 },
+          angleLines: {
+            color: (ctx) => (DIM_CONFIG[ctx.index]?.color || '#3f3f46') + '55'
+          }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#18181b',
+          borderColor: '#3f3f46',
+          borderWidth: 1,
+          titleColor: '#fafafa',
+          bodyColor: '#a1a1aa',
+          callbacks: {
+            label: (item) => item.datasetIndex === 2 ? `${item.raw}/5 分` : null
+          }
+        }
+      }
+    }
+  });
 }
 
 // ── Score progress bars (in score card) ──
@@ -214,26 +365,40 @@ function renderHighlights(highlights) {
   list.innerHTML = highlights.map(h => `<li>${h}</li>`).join('');
 }
 
-// ── Radar chart (dark themed) ──
+// ── Radar chart (dimension section, dark themed with rich colors) ──
 function renderRadarChart(dimensions) {
   const ctx = document.getElementById('radarChart').getContext('2d');
   if (radarChart) radarChart.destroy();
 
+  const scores = DIM_CONFIG.map(d => dimensions[d.id]?.score || 0);
+  const colors = DIM_CONFIG.map(d => d.color);
+
   radarChart = new Chart(ctx, {
     type: 'radar',
     data: {
-      labels: DIM_CONFIG.map(d => d.name),
-      datasets: [{
-        label: '评分',
-        data: DIM_CONFIG.map(d => dimensions[d.id]?.score || 0),
-        backgroundColor: 'rgba(129,140,248,0.15)',
-        borderColor: 'rgba(129,140,248,0.8)',
-        borderWidth: 2,
-        pointBackgroundColor: DIM_CONFIG.map(d => d.color),
-        pointBorderColor: 'transparent',
-        pointRadius: 5,
-        pointHoverRadius: 7
-      }]
+      labels: DIM_CONFIG.map(d => `${d.icon} ${d.name}`),
+      datasets: [
+        {
+          data: [5, 5, 5, 5],
+          backgroundColor: 'rgba(255,255,255,0.025)',
+          borderColor: 'rgba(255,255,255,0.07)',
+          borderWidth: 1,
+          pointRadius: 0
+        },
+        {
+          label: '评分',
+          data: scores,
+          backgroundColor: 'rgba(129,140,248,0.18)',
+          borderColor: colors,
+          borderWidth: 2.5,
+          pointBackgroundColor: colors,
+          pointBorderColor: '#18181b',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 9,
+          fill: true
+        }
+      ]
     },
     options: {
       scales: {
@@ -241,15 +406,15 @@ function renderRadarChart(dimensions) {
           beginAtZero: true,
           min: 0,
           max: 5,
-          ticks: {
-            stepSize: 1,
-            font: { size: 10 },
-            color: '#52525b',
-            backdropColor: 'transparent'
+          ticks: { stepSize: 1, font: { size: 10 }, color: '#52525b', backdropColor: 'transparent' },
+          pointLabels: {
+            font: { size: 13, weight: '700' },
+            color: (ctx) => DIM_CONFIG[ctx.index]?.color || '#a1a1aa'
           },
-          pointLabels: { font: { size: 12, weight: '600' }, color: '#a1a1aa' },
-          grid: { color: '#27272a' },
-          angleLines: { color: '#3f3f46' }
+          grid: { color: 'rgba(255,255,255,0.07)' },
+          angleLines: {
+            color: (ctx) => (DIM_CONFIG[ctx.index]?.color || '#3f3f46') + '50'
+          }
         }
       },
       plugins: { legend: { display: false } }
@@ -358,5 +523,215 @@ async function loadResult(id) {
     displayResult(currentResult);
   } catch {
     alert('加载评分结果失败');
+  }
+}
+
+// ── Overview Radar (initial page, empty scores) ──
+function renderOverviewRadar() {
+  const canvas = document.getElementById('overviewRadarChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: DIM_CONFIG.map(d => `${d.icon} ${d.name}`),
+      datasets: [
+        {
+          data: [5, 5, 5, 5],
+          backgroundColor: 'rgba(255,255,255,0.025)',
+          borderColor: 'rgba(255,255,255,0.07)',
+          borderWidth: 1,
+          pointRadius: 0
+        },
+        {
+          data: [0, 0, 0, 0],
+          backgroundColor: 'rgba(129,140,248,0.08)',
+          borderColor: DIM_CONFIG.map(d => d.color),
+          borderWidth: 2.5,
+          pointBackgroundColor: DIM_CONFIG.map(d => d.color),
+          pointBorderColor: '#18181b',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          fill: true
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        r: {
+          beginAtZero: true,
+          min: 0,
+          max: 5,
+          ticks: { display: false, backdropColor: 'transparent' },
+          pointLabels: {
+            font: { size: 12, weight: '700' },
+            color: (ctx) => DIM_CONFIG[ctx.index]?.color || '#a1a1aa'
+          },
+          grid: { color: 'rgba(255,255,255,0.07)' },
+          angleLines: {
+            color: (ctx) => (DIM_CONFIG[ctx.index]?.color || '#3f3f46') + '55'
+          }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function toggleOverviewRadar() {
+  const wrap = document.getElementById('overviewRadarWrap');
+  const btn  = document.getElementById('overviewToggleChart');
+  const visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  btn.classList.toggle('active', !visible);
+}
+
+// ── Overview Dimension Cards (initial page, no scores) ──
+function renderOverviewDimensions() {
+  const container = document.getElementById('overviewDimensionsGrid');
+  if (!container) return;
+  container.innerHTML = DIM_CONFIG.map(dim => {
+    const tagItems = dim.tags.map(t => `<span class="dim-tag">${t}</span>`).join('');
+    return `
+      <div class="dim-card" style="--dim-accent:${dim.color}">
+        <div class="dim-card-top">
+          <div class="dim-name">${dim.icon} ${dim.name}</div>
+          <div class="dim-score-badge" style="color:${dim.color}">
+            —<span class="dim-score-max">/5</span>
+          </div>
+        </div>
+        <p class="dim-desc">${dim.desc}</p>
+        <div class="dim-bar-track">
+          <div class="dim-bar-fill" style="width:0;background:${dim.color};box-shadow:0 0 8px ${dim.color}60"></div>
+        </div>
+        <div class="dim-tags">${tagItems}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Scoring Criteria Brief ──
+async function loadScoringCriteriaBrief() {
+  try {
+    const res = await fetch(`${API_BASE}/scoring-criteria-brief`);
+    const data = await res.json();
+    const el = document.getElementById('scoringCriteriaBrief');
+    el.innerHTML = data.content
+      ? marked.parse(data.content)
+      : '';
+  } catch (err) {
+    console.error('加载评分标准失败:', err);
+  }
+}
+
+// ── Feishu OAuth Login ──
+async function checkLoginStatus() {
+  try {
+    const res = await fetch('/auth/feishu/status');
+    const data = await res.json();
+    const loginBtn    = document.getElementById('loginBtn');
+    const loginStatus = document.getElementById('loginStatus');
+    if (data.loggedIn) {
+      loginBtn.style.display    = 'none';
+      loginStatus.style.display = '';
+    } else {
+      loginBtn.style.display    = '';
+      loginStatus.style.display = 'none';
+    }
+  } catch (e) {
+    console.error('检查登录状态失败:', e);
+  }
+  try {
+    const cfgRes = await fetch('/auth/feishu/config');
+    const cfgData = await cfgRes.json();
+    if (cfgData.hasCustomConfig) {
+      document.getElementById('customAppId').value = cfgData.appId;
+    }
+  } catch (_) {}
+}
+
+async function handleFeishuLogin() {
+  try {
+    const res = await fetch('/auth/feishu/login');
+    const data = await res.json();
+    if (data.authUrl) {
+      const popup = window.open(data.authUrl, '_blank', 'width=600,height=700');
+      // 监控弹窗：用户手动关闭后自动恢复登录按钮
+      if (popup) {
+        const watcher = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(watcher);
+            checkLoginStatus();
+          }
+        }, 1000);
+        // 安全超时：5 分钟后停止监控
+        setTimeout(() => clearInterval(watcher), 300000);
+      }
+    }
+  } catch (e) {
+    alert('获取登录链接失败: ' + e.message);
+  }
+}
+
+async function handleFeishuLogout() {
+  try {
+    await fetch('/auth/feishu/logout', { method: 'POST' });
+    checkLoginStatus();
+  } catch (e) {
+    alert('退出失败: ' + e.message);
+  }
+}
+
+// ── App Config Panel ──
+function toggleAppConfig() {
+  const body  = document.getElementById('appConfigBody');
+  const arrow = document.getElementById('configArrow');
+  const open  = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  arrow.classList.toggle('open', open);
+}
+
+async function saveAppConfig() {
+  const appId     = document.getElementById('customAppId').value.trim();
+  const appSecret = document.getElementById('customAppSecret').value.trim();
+  const statusEl  = document.getElementById('configStatus');
+
+  if (!appId || !appSecret) {
+    statusEl.textContent = '请填写完整的 App ID 和 App Secret';
+    statusEl.className = 'config-status error';
+    return;
+  }
+
+  try {
+    const res = await fetch('/auth/feishu/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId, appSecret }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '保存失败');
+
+    statusEl.textContent = '配置已保存，请重新登录';
+    statusEl.className = 'config-status';
+    checkLoginStatus();
+  } catch (e) {
+    statusEl.textContent = '保存失败: ' + e.message;
+    statusEl.className = 'config-status error';
+  }
+}
+
+async function clearAppConfig() {
+  const statusEl = document.getElementById('configStatus');
+  try {
+    await fetch('/auth/feishu/logout', { method: 'POST' });
+    document.getElementById('customAppId').value     = '';
+    document.getElementById('customAppSecret').value  = '';
+    statusEl.textContent = '已恢复默认配置';
+    statusEl.className = 'config-status';
+    checkLoginStatus();
+  } catch (e) {
+    statusEl.textContent = '操作失败: ' + e.message;
+    statusEl.className = 'config-status error';
   }
 }

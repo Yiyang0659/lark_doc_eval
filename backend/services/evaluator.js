@@ -19,6 +19,26 @@ try {
   console.warn('[evaluator] 未找到评分标准.md，使用内置默认标准');
 }
 
+let SCORING_CRITERIA_BRIEF = '';
+try {
+  SCORING_CRITERIA_BRIEF = fs.readFileSync(
+    path.join(SCORING_DIR, '评分标准简写.md'), 'utf-8'
+  );
+  console.log('[evaluator] 已加载评分标准简写.md');
+} catch {
+  console.warn('[evaluator] 未找到评分标准简写.md');
+}
+
+let SUMMARY_PROMPT_TEXT = '';
+try {
+  SUMMARY_PROMPT_TEXT = fs.readFileSync(
+    path.join(__dirname, '../scoring/文档总结.md'), 'utf-8'
+  );
+  console.log('[evaluator] 已加载文档总结.md');
+} catch {
+  console.warn('[evaluator] 未找到文档总结.md，使用内置总结 prompt');
+}
+
 let DIM_WEIGHTS = null;
 let CONFIG_LEVELS = null;
 try {
@@ -97,6 +117,33 @@ async function fetchDocContent(url) {
   return await feishuService.fetchDoc(url);
 }
 
+function buildSummaryPrompt(docContent) {
+  const basePrompt = SUMMARY_PROMPT_TEXT || `你是一个专业的技术文档分析师与内容提炼专家。你的任务是阅读提供的飞书文档内容，剔除冗余信息，精准提取其中的核心业务逻辑、技术方案和产出价值，并进行结构化总结。
+
+## 提取要求
+请仔细阅读文档，并提炼以下五个维度的信息：
+1. 一句话总结：用极其精炼的语言（50字以内）说明这篇文档的核心主题是什么。
+2. 背景与痛点：文档是在什么业务/技术背景下产生的？旨在解决什么具体的痛点或问题？
+3. 核心方案与动作：文档中提出了什么具体的解决方案、架构设计或执行步骤？（提取最核心的 3-4 个关键点）
+4. 业务价值与成果：实施该方案后，达成了什么量化收益或实际落地成果？（若文档未提及，请说明"文档暂未体现"）
+5. 适用场景与受众：这篇文档最适合什么角色阅读？在什么场景下可以复用？
+
+## 输出格式要求
+请严格按以下 JSON 格式返回结果，不要包含任何 Markdown 标记或前后导言：
+
+{
+    "document_summary": {
+        "one_line_intro": "一句话核心总结",
+        "background_and_pain_points": ["背景或痛点1", "背景或痛点2"],
+        "core_solutions": ["核心方案1", "核心方案2", "核心方案3"],
+        "business_value": ["业务价值或成果1"],
+        "target_audience_and_scenario": "目标受众与适用场景说明"
+    }
+}`;
+
+  return `${basePrompt}\n\n文档内容：\n${docContent.slice(0, 8000)}`;
+}
+
 function buildPrompt(docUrl, docContent) {
   const criteria = SCORING_CRITERIA_TEXT || FALLBACK_CRITERIA;
 
@@ -144,25 +191,37 @@ ${contentSection}
 
 // ── Robust JSON parser for AI output ─────────────────────────────────────
 function robustParseJSON(raw) {
-  // 1. 先尝试标准 JSON
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!raw || typeof raw !== 'string') return null;
+
+  // 0. 去除 markdown 代码块包裹
+  let cleaned = raw.trim();
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+
+  // 1. 尝试直接解析整个内容
+  try { return JSON.parse(cleaned); } catch (_) {}
+
+  // 2. 用正则提取最外层 JSON 对象（非贪婪匹配最内层完整对象）
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
 
   let str = jsonMatch[0];
 
-  // 2. 尝试直接解析
+  // 3. 尝试直接解析
   try { return JSON.parse(str); } catch (_) {}
 
-  // 3. 修复常见问题后重试
+  // 4. 修复常见问题后重试
   str = str
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')  // 仅移除 ASCII 控制字符，保留中文
     .replace(/,\s*([}\]])/g, '$1');                    // 尾部逗号
 
   try { return JSON.parse(str); } catch (_) {}
 
-  // 4. 最后兜底：用 Function 构造器（安全上下文中 AI 输出已限制）
+  // 5. 最后兜底：用 Function 构造器
   try {
-    const fn = new Function('return ' + jsonMatch[0]);
+    const fn = new Function('return ' + str);
     return fn();
   } catch (_) { return null; }
 }
@@ -172,20 +231,51 @@ async function evaluate(docUrl, options = {}) {
   const providerName = options.provider || process.env.DEFAULT_MODEL || 'claude';
   const provider = ProviderFactory.create(providerName, { model: options.model });
 
-  const docContent = await fetchDocContent(docUrl);
+  const { content: docContent, title: docTitle } = await fetchDocContent(docUrl);
+  console.log('[evaluator] docTitle:', docTitle || '(empty)');
+  console.log('[evaluator] docContent length:', docContent?.length || 0);
+
   const prompt = buildPrompt(docUrl, docContent);
-  const raw = await provider.chat(prompt, { maxTokens: 8000 });
+
+  // 串行调用：先评分（必须成功），再总结（可选）
+  let raw;
+  try {
+    raw = await provider.chat(prompt, { maxTokens: 8000 });
+  } catch (chatErr) {
+    console.error('[evaluator] AI 评分调用异常:', chatErr.message);
+    throw new Error('AI 评分调用异常: ' + chatErr.message);
+  }
+  console.log('[evaluator] AI raw response length:', raw?.length || 0);
+
+  if (raw == null || raw === '') throw new Error('AI 评分调用失败：无响应');
+
+  console.log('[evaluator] AI raw response (first 500 chars):', raw.slice(0, 500));
 
   const parsed = robustParseJSON(raw);
-  if (!parsed) throw new Error('AI 返回格式错误，无法解析评分结果');
+  if (!parsed) {
+    console.error('[evaluator] JSON parse failed. Raw response:', raw);
+    throw new Error('AI 返回格式错误，无法解析评分结果');
+  }
   const dims = parsed.dimensions;
   const totalScore = calcWeightedScore(dims);
 
+  let docSummary = null;
+  try {
+    const summaryRaw = await provider.chat(buildSummaryPrompt(docContent), { maxTokens: 2000 });
+    if (summaryRaw) {
+      docSummary = robustParseJSON(summaryRaw)?.document_summary || null;
+    }
+  } catch (e) {
+    console.warn('[evaluator] 文档总结调用失败（不影响评分）:', e.message);
+  }
+
   const result = {
-    id: crypto.randomUUID
+    id: options.id || (crypto.randomUUID
       ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
     docUrl,
+    docTitle: docTitle || '',
+    docSummary,
     provider: providerName,
     total_score: totalScore,
     level: getLevel(totalScore),
@@ -203,5 +293,14 @@ async function evaluate(docUrl, options = {}) {
 
 function getResult(id)    { return results.get(id) || null; }
 function getAllResults()   { return Array.from(results.values()); }
+function setResult(id, data) { results.set(id, { id, ...data }); }
 
-module.exports = { evaluate, getResult, getAllResults };
+function getScoringCriteria() {
+  return SCORING_CRITERIA_TEXT || FALLBACK_CRITERIA;
+}
+
+function getScoringCriteriaBrief() {
+  return SCORING_CRITERIA_BRIEF || '';
+}
+
+module.exports = { evaluate, getResult, getAllResults, setResult, getScoringCriteria, getScoringCriteriaBrief };
