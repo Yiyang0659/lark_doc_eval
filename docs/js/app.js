@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = 'https://lark-doc-eval-1.onrender.com/api';
 let currentResult = null;
 let radarChart = null;
 let scoreRadarChart = null;
@@ -628,7 +628,7 @@ async function loadScoringCriteriaBrief() {
 // ── Feishu OAuth Login ──
 async function checkLoginStatus() {
   try {
-    const res = await fetch('/auth/feishu/status');
+    const res = await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/status');
     const data = await res.json();
     const loginBtn    = document.getElementById('loginBtn');
     const loginStatus = document.getElementById('loginStatus');
@@ -643,7 +643,7 @@ async function checkLoginStatus() {
     console.error('检查登录状态失败:', e);
   }
   try {
-    const cfgRes = await fetch('/auth/feishu/config');
+    const cfgRes = await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/config');
     const cfgData = await cfgRes.json();
     if (cfgData.hasCustomConfig) {
       document.getElementById('customAppId').value = cfgData.appId;
@@ -653,7 +653,7 @@ async function checkLoginStatus() {
 
 async function handleFeishuLogin() {
   try {
-    const res = await fetch('/auth/feishu/login');
+    const res = await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/login');
     const data = await res.json();
     if (data.authUrl) {
       const popup = window.open(data.authUrl, '_blank', 'width=600,height=700');
@@ -676,7 +676,7 @@ async function handleFeishuLogin() {
 
 async function handleFeishuLogout() {
   try {
-    await fetch('/auth/feishu/logout', { method: 'POST' });
+    await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/logout', { method: 'POST' });
     checkLoginStatus();
   } catch (e) {
     alert('退出失败: ' + e.message);
@@ -704,7 +704,7 @@ async function saveAppConfig() {
   }
 
   try {
-    const res = await fetch('/auth/feishu/config', {
+    const res = await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appId, appSecret }),
@@ -724,7 +724,7 @@ async function saveAppConfig() {
 async function clearAppConfig() {
   const statusEl = document.getElementById('configStatus');
   try {
-    await fetch('/auth/feishu/logout', { method: 'POST' });
+    await fetch('https://lark-doc-eval-1.onrender.com/auth/feishu/logout', { method: 'POST' });
     document.getElementById('customAppId').value     = '';
     document.getElementById('customAppSecret').value  = '';
     statusEl.textContent = '已恢复默认配置';
