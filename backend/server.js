@@ -11,7 +11,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.use('/api', evaluateRoutes);
 
@@ -93,7 +92,7 @@ app.get('/auth/feishu/callback', async (req, res) => {
       res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>登录成功</title>
 <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#09090b;color:#fafafa}
 .ok{text-align:center}.ok h2{color:#34d399;margin-bottom:12px}a{color:#818cf8}</style></head>
-<body><div class="ok"><h2>✅ 登录成功</h2><p>可以关闭此窗口，返回评分页面操作</p><p><a href="/">← 返回评分页面</a></p></div>
+<body><div class="ok"><h2>✅ 登录成功</h2><p>可以关闭此窗口，返回评分页面操作</p><p><a href="https://yiyang0659.github.io/lark_doc_eval/">← 返回评分页面</a></p></div>
 <script>
   try{window.opener.postMessage("feishu-login-success","*")}catch(e){}
   setTimeout(function(){try{window.close()}catch(e){}},300);
@@ -133,10 +132,6 @@ app.get('/auth/feishu/config', (req, res) => {
 app.post('/auth/feishu/logout', (req, res) => {
   feishuService.logout();
   res.json({ ok: true });
-});
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 app.listen(PORT, () => {
