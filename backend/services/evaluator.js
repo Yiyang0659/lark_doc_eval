@@ -193,37 +193,70 @@ ${contentSection}
 function robustParseJSON(raw) {
   if (!raw || typeof raw !== 'string') return null;
 
-  // 0. 去除 markdown 代码块包裹
   let cleaned = raw.trim();
-  const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1].trim();
+
+  // 0. 去除 markdown 代码块包裹（支持多个代码块，取第一个）
+  const codeBlocks = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/g);
+  if (codeBlocks && codeBlocks.length > 0) {
+    const inner = codeBlocks[0].replace(/```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '').trim();
+    try { return JSON.parse(inner); } catch (_) {}
+    cleaned = inner;
   }
 
   // 1. 尝试直接解析整个内容
   try { return JSON.parse(cleaned); } catch (_) {}
 
-  // 2. 用正则提取最外层 JSON 对象（非贪婪匹配最内层完整对象）
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
+  // 2. 用括号匹配法提取 JSON 对象（比正则更可靠）
+  function extractJSONByBrackets(s) {
+    const results = [];
+    let depth = 0, start = -1;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (s[i] === '}') {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          results.push(s.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+    return results;
+  }
 
-  let str = jsonMatch[0];
+  const candidates = extractJSONByBrackets(cleaned);
 
-  // 3. 尝试直接解析
-  try { return JSON.parse(str); } catch (_) {}
+  // 逐个候选尝试解析，返回第一个包含 dimensions 字段的
+  for (const candidate of candidates) {
+    try {
+      const obj = JSON.parse(candidate);
+      if (obj && obj.dimensions) return obj;
+    } catch (_) {}
+  }
 
-  // 4. 修复常见问题后重试
-  str = str
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')  // 仅移除 ASCII 控制字符，保留中文
-    .replace(/,\s*([}\]])/g, '$1');                    // 尾部逗号
+  // 3. 如果没有 dimensions 字段，返回第一个能解析的
+  for (const candidate of candidates) {
+    try { return JSON.parse(candidate); } catch (_) {}
+  }
 
-  try { return JSON.parse(str); } catch (_) {}
+  // 4. 修复常见问题后重试所有候选
+  for (let candidate of candidates) {
+    candidate = candidate
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ')
+      .replace(/,\s*([}\]])/g, '$1');
+    try { return JSON.parse(candidate); } catch (_) {}
+  }
 
   // 5. 最后兜底：用 Function 构造器
-  try {
-    const fn = new Function('return ' + str);
-    return fn();
-  } catch (_) { return null; }
+  if (candidates.length > 0) {
+    try {
+      const fn = new Function('return ' + candidates[candidates.length - 1]);
+      return fn();
+    } catch (_) {}
+  }
+
+  return null;
 }
 
 // ── Core evaluate function ─────────────────────────────────────────────────
@@ -253,7 +286,7 @@ async function evaluate(docUrl, options = {}) {
 
   const parsed = robustParseJSON(raw);
   if (!parsed) {
-    console.error('[evaluator] JSON parse failed. Raw response:', raw);
+    console.error('[evaluator] JSON parse failed. Raw response (first 2000 chars):', raw.slice(0, 2000));
     throw new Error('AI 返回格式错误，无法解析评分结果');
   }
   const dims = parsed.dimensions;
